@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Android Build QA Report Generator</title>
+<style>
+  :root{
+    --ink:#1a1d29; --paper:#f4f5f9; --line:#e0e2ea;
+    --accent:#2f5faa; --accent-dark:#1b3a6b;
+    --headnavy:#2f5faa; --headnavy-light:#1b3a6b;
+    --high:#dc2626; --high-bg:#fde2e2;
+    --medium:#d97706; --medium-bg:#fef0d5;
+    --low:#65a30d; --low-bg:#eef6d6;
+    --grey:#e2e4ea;
+  }
+  *{box-sizing:border-box;}
+  body{
+    font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+    background:radial-gradient(circle at top left, #eef3fc 0%, var(--paper) 45%), var(--paper);
+    color:var(--ink); margin:0; padding:28px;
+  }
+  h1{font-size:22px; margin:0 0 4px; font-weight:800; letter-spacing:-.01em;
+     background:linear-gradient(135deg,var(--accent),var(--accent-dark)); -webkit-background-clip:text; background-clip:text; color:transparent;}
+  .sub{color:#666; font-size:13px; margin-bottom:22px;}
+  .layout{display:grid; grid-template-columns:400px 1fr; gap:22px; align-items:start;}
+  @media (max-width:980px){.layout{grid-template-columns:1fr;}}
+  .panel{
+    background:#fff; border:1px solid var(--line); border-radius:14px; padding:18px 18px 20px;
+    margin-bottom:18px; box-shadow:0 1px 3px rgba(20,20,40,.05);
+    transition:box-shadow .18s ease, transform .18s ease;
+    position:relative; overflow:hidden;
+  }
+  .panel::before{content:"";position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--accent),#7fa8dd);}
+  .panel:hover{box-shadow:0 6px 18px rgba(30,58,110,.10); transform:translateY(-1px);}
+  .panel h2{
+    font-size:13.5px; margin:2px 0 14px; color:var(--accent-dark); text-transform:uppercase; letter-spacing:.05em;
+    font-weight:800; display:flex; align-items:center; gap:9px;
+  }
+  .panel-numbered{ counter-increment:panelnum; }
+  .form-col{ counter-reset:panelnum; }
+  .panel-numbered h2::before{
+    content:counter(panelnum);
+    display:inline-flex; align-items:center; justify-content:center; flex-shrink:0;
+    width:22px; height:22px; border-radius:50%;
+    background:linear-gradient(135deg,var(--accent),var(--accent-dark));
+    color:#fff; font-size:11.5px; font-weight:800;
+  }
+  label{display:block; font-size:12px; font-weight:600; margin:10px 0 4px; color:#3a3f4d;}
+  input[type=text], input[type=url], input[type=file], textarea, select{
+    width:100%; padding:8px 10px; border:1px solid #d3d6e2; border-radius:8px; font-size:13px; font-family:inherit;
+    transition:border-color .15s ease, box-shadow .15s ease; background:#fbfbfe;
+  }
+  input[type=text]:focus, input[type=url]:focus, textarea:focus, select:focus{
+    outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(47,95,170,.12); background:#fff;
+  }
+  textarea{min-height:70px; resize:vertical; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12px;}
+  .row{display:flex; gap:8px;}
+  .row > *{flex:1;}
+  .radiogrp{display:flex; gap:14px; margin-top:6px;}
+  .radiogrp label{display:flex; align-items:center; gap:5px; font-weight:400; margin:0;}
+  button{
+    cursor:pointer; border:none; border-radius:6px; padding:7px 12px; font-size:12px; font-weight:600;
+    background:var(--accent); color:#fff; margin-top:8px;
+  }
+  button:hover{background:var(--accent-dark);}
+  button.secondary{background:#eceef5; color:#333;}
+  button.secondary:hover{background:#dfe2ee;}
+  button.small{padding:4px 8px; font-size:11px;}
+  button.generate{
+    background:linear-gradient(135deg, var(--accent), var(--accent-dark));
+    font-size:13px; padding:10px 20px; box-shadow:0 2px 6px rgba(67,56,202,.35);
+  }
+  button.generate-full{
+    display:block; width:100%; background:#4f7942; color:#fff; font-size:15px;
+    font-weight:700; padding:14px 20px; border-radius:8px; margin:4px 0 20px;
+    box-shadow:0 2px 6px rgba(79,121,66,.35);
+  }
+  button.generate-full:hover{background:#3f6234;}
+  .bugtable{width:100%; border-collapse:collapse; margin-top:8px; font-size:11.5px;}
+  .bugtable th, .bugtable td{border:1px solid #ddd; padding:4px; text-align:left;}
+  .bugtable th{background:#f0f0f5;}
+  .bugtable input, .bugtable select{padding:3px 4px; font-size:11px; border:1px solid #ccc;}
+  .hint{font-size:11px; color:#888; margin-top:4px; line-height:1.4;}
+  .filepick{font-size:12px;}
+  .thumb{max-width:100%; margin-top:6px; border:1px solid #ddd; border-radius:4px;}
+  .copybar{position:sticky; top:0; background:var(--paper); padding:10px 0; z-index:5; display:flex; gap:10px; align-items:center;}
+  #status{font-size:12px; color:var(--accent-dark); font-weight:600;}
+  /* ---- Report output styling ---- */
+  #reportOutput{background:#fff; border:1px solid var(--line); border-radius:14px; padding:0; font-family:Arial,Helvetica,sans-serif; font-size:13px; color:#1a1d29; overflow:hidden; box-shadow:0 4px 16px rgba(20,20,50,.06);}
+  #reportOutput .reportBody{padding:22px 24px;}
+  #reportOutput .reportHeader{background:linear-gradient(135deg, var(--headnavy), var(--headnavy-light)); color:#fff; padding:18px 24px;}
+  #reportOutput .reportHeader h2{margin:0; font-size:17px; color:#fff; letter-spacing:.01em;}
+  #reportOutput .reportHeader .tag{display:inline-block; margin-top:6px; font-size:11px; padding:3px 9px; border-radius:20px; font-weight:700; text-transform:uppercase; letter-spacing:.05em;}
+  #reportOutput .tag.completed{background:#16a34a; color:#fff;}
+  #reportOutput .tag.progress{background:#eab308; color:#3a2f00;}
+  #reportOutput table{border-collapse:collapse; width:100%; margin:10px 0 20px;}
+  #reportOutput th, #reportOutput td{border:1px solid #d7d9e2; padding:6px 9px; font-size:12.5px;}
+  #reportOutput th{background:var(--headnavy); color:#fff; text-align:left; font-weight:600;}
+  #reportOutput .matrixHead th{background:var(--headnavy); color:#fff;}
+  #reportOutput .cellHigh{background:var(--high-bg); color:var(--high); text-align:center; font-weight:bold;}
+  #reportOutput .cellMedium{background:var(--medium-bg); color:var(--medium); text-align:center; font-weight:bold;}
+  #reportOutput .cellLow{background:var(--low-bg); color:var(--low); text-align:center; font-weight:bold;}
+  #reportOutput .cellGrey{background:var(--grey); font-weight:bold;}
+  #reportOutput .priorityLabel{font-weight:700;}
+  #reportOutput .priorityLabel.high{color:var(--high);}
+  #reportOutput .priorityLabel.medium{color:var(--medium);}
+  #reportOutput .priorityLabel.low{color:var(--low);}
+  #reportOutput td.priorityHigh{background:var(--high); color:#fff; font-weight:700; text-align:center;}
+  #reportOutput td.priorityMedium{background:var(--medium-bg); color:var(--medium); font-weight:700; text-align:center;}
+  #reportOutput td.priorityLow{background:var(--low-bg); color:var(--low); font-weight:700; text-align:center;}
+  #reportOutput h3{font-size:14px; margin:20px 0 6px; color:var(--accent-dark); border-bottom:2px solid var(--accent); display:inline-block; padding-bottom:2px;}
+  #reportOutput a{color:var(--accent); font-weight:600;}
+  #reportOutput img{max-width:480px; display:block; margin:8px 0; border-radius:8px; border:1px solid #ddd;}
+  #reportOutput .placeholder{padding:60px 24px; text-align:center; color:#999;}
+</style>
+</head>
+<body>
+
+<h1>Android Build QA Report Generator</h1>
+<div class="sub">Fill in the fields on the left, upload your CSV, then click <b>Generate Report</b>. The finished report can be copied straight into a Gmail compose window with formatting intact.</div>
+
+<div class="layout">
+  <!-- ===================== LEFT: INPUT PANEL ===================== -->
+  <div class="form-col">
+
+    <div class="panel panel-numbered">
+      <h2>Build info</h2>
+      <label>Build version (e.g. 13.8.2_T1)</label>
+      <input type="text" id="buildVersion" placeholder="e.g. 13.8.2_T1">
+      <label>Short label used in section titles (e.g. T1)</label>
+      <input type="text" id="shortLabel" placeholder="e.g. T1">
+      <label>Status</label>
+      <div class="radiogrp">
+        <label><input type="radio" name="status" value="progress" checked> In progress</label>
+        <label><input type="radio" name="status" value="completed"> Completed</label>
+      </div>
+      <label>Optional note (e.g. "This task was not tested as it was not merged in this release", leave blank to omit)</label>
+      <input type="text" id="noteText" placeholder="Optional NOTE line with ticket id below">
+      <div class="row">
+        <div><label>Note ticket ID (optional)</label><input type="text" id="noteTicket"></div>
+        <div><label>Note ticket link (optional)</label><input type="url" id="noteTicketUrl"></div>
+      </div>
+    </div>
+
+    <div class="panel panel-numbered">
+      <h2>Links</h2>
+      <label>Open Project link</label>
+      <input type="url" id="openProjectLink" placeholder="Paste your Open Project work packages link here">
+      <div class="hint"><b>Note:</b> not sure how to build the link? <a href="https://project.intermesh.net/projects/android/work_packages?query_props=%7B%22c%22%3A%5B%22id%22%2C%22subject%22%2C%22category%22%2C%22type%22%2C%22priority%22%2C%22assignee%22%2C%22customField6%22%5D%2C%22hi%22%3Afalse%2C%22g%22%3A%22%22%2C%22is%22%3Atrue%2C%22tv%22%3Afalse%2C%22hl%22%3A%22none%22%2C%22t%22%3A%22type%3Aasc%2Cpriority%3Aasc%2CupdatedAt%3Adesc%22%2C%22f%22%3A%5B%7B%22n%22%3A%22status%22%2C%22o%22%3A%22*%22%2C%22v%22%3A%5B%5D%7D%2C%7B%22n%22%3A%22version%22%2C%22o%22%3A%22%3D%22%2C%22v%22%3A%5B%229998%22%5D%7D%5D%2C%22pp%22%3A50%2C%22pa%22%3A1%7D" target="_blank" rel="noopener">click here</a> to open Open Project with an example filter, then change the <b>version</b> filter there to your current build, copy the resulting page URL, and paste it into the field above.</div>
+
+      <label style="margin-top:14px;">Firebase link</label>
+      <input type="url" id="firebaseLink" placeholder="Paste your Firebase Crashlytics link here">
+      <div class="hint"><b>Note:</b> not sure how to build the link? <a href="https://console.firebase.google.com/u/0/project/artful-affinity-634/crashlytics/app/android:com.indiamart.m/issues?time=7d&types=crash,ANR&hl=en&versions=13.7.9_S120MAY26%20(782)&state=open&tag=all&sort=eventCount" target="_blank" rel="noopener">click here</a> to open Firebase Crashlytics with an example filter, then change the <b>versions</b> filter there to your current build, copy the resulting page URL, and paste it into the field above.</div>
+
+      <label>Firebase / Crashlytics screenshot</label>
+      <input type="file" class="filepick" id="firebaseImg" accept="image/*">
+      <img id="firebaseImgPreview" class="thumb" style="display:none">
+      <label>Additional Firebase screenshot (optional)</label>
+      <input type="file" class="filepick" id="firebaseImg2" accept="image/*">
+      <img id="firebaseImg2Preview" class="thumb" style="display:none">
+    </div>
+
+    <div class="panel panel-numbered">
+      <h2>Bug data source — CSV upload</h2>
+      <div class="hint">Upload a CSV export of your defects. Expected columns (header names are matched flexibly, case-insensitive): <b>ID, Subject, Category, Type, Priority, Bug Type, Assignee</b>. "Type" should say "Product Bug" or "Suggestion" so the matrix can separate the two; "Priority" should be High/Medium/Low.</div>
+      <label>Upload CSV file</label>
+      <input type="file" class="filepick" id="csvFile" accept=".csv,text/csv">
+      <div id="csvStatus" class="hint"></div>
+
+      <label style="margin-top:14px;">Or paste CSV / JSON directly</label>
+      <textarea id="jsonPaste" placeholder='Paste CSV text (with header row) or a JSON array of {id, subject, category, type, priority, bugType, assignee}'></textarea>
+      <button onclick="importPastedData()">Import pasted data into table</button>
+      <div class="hint" id="importHint"></div>
+    </div>
+
+    <div class="panel panel-numbered">
+      <h2>Defects — edit directly</h2>
+      <div id="bugRows"></div>
+      <button class="small" onclick="addBugRow()">+ Add row</button>
+      <div class="hint">The defect matrix and totals below are calculated automatically from this table.</div>
+    </div>
+
+    <div class="panel panel-numbered">
+      <h2>Testing devices</h2>
+      <div id="deviceRows"></div>
+      <button class="small" onclick="addDeviceRow()">+ Add device</button>
+    </div>
+
+    <div class="panel panel-numbered" id="testlinkPanel" style="display:none;">
+      <h2>Test case execution (Completed status only)</h2>
+      <label>Test execution / Testlink screenshot</label>
+      <input type="file" class="filepick" id="testlinkImg" accept="image/*">
+      <img id="testlinkImgPreview" class="thumb" style="display:none">
+    </div>
+
+    <div class="panel panel-numbered">
+      <h2>Bug/Story relation count (optional)</h2>
+      <label><input type="checkbox" id="includeBugStory" style="width:auto;display:inline-block;margin-right:6px;">Include this section in the report</label>
+      <div class="hint">Select the range in Google Sheets (including the header row), copy it (Ctrl/Cmd+C), then paste directly into the box below — it keeps the columns intact.</div>
+      <textarea id="bugStoryPaste" placeholder="Paste the copied Google Sheets range here (e.g. Manager, Ticket, Ticket Type, Task, Developer, Module, Bugs in T1)"></textarea>
+      <button class="secondary" onclick="parseBugStory()">Parse pasted data</button>
+      <div id="bugStoryStatus" class="hint"></div>
+    </div>
+
+    <div class="panel">
+      <h2 style="display:flex;align-items:center;gap:10px;color:#3f6b3f;">SIGN-OFF<span style="flex:1;height:1px;background:#cddccd;"></span></h2>
+      <label style="text-transform:none;letter-spacing:0;font-size:13px;color:#222;">Name</label>
+      <input type="text" id="signerName" placeholder="Tester name">
+      <label style="text-transform:none;letter-spacing:0;font-size:13px;color:#222;margin-top:12px;">Designation / Team</label>
+      <input type="text" id="signerRole" placeholder="e.g. Test Engineer, App-QA">
+    </div>
+
+    <button class="generate-full" onclick="renderReport()">⚡ Generate report</button>
+
+  </div>
+
+  <!-- ===================== RIGHT: PREVIEW ===================== -->
+  <div>
+    <div class="copybar">
+      <button onclick="copyReport()">Copy report for Gmail</button>
+      <span id="status"></span>
+    </div>
+    <div id="reportOutput"><div class="placeholder">Fill in the fields on the left, then click <b>Generate report</b>.</div></div>
+  </div>
+</div>
+
+<script>
+let bugs = [
+  {id:"671596", subject:"Something went wrong with retry CTA while searching for a product on BL search", category:"BL_Webview", type:"Product Bug", priority:"Medium", bugType:"Functional/Logical", assignee:"Priyanshu Gaurav"},
+  {id:"672071", subject:"Add price field should be added below product name field in add your products page of SOI journey", category:"SOI_Webview", type:"Suggestion", priority:"Medium", bugType:"Functional/Logical", assignee:"Suraj Kumar"}
+];
+let devices = [
+  {device:"IQOO Z9 5G", version:"15"},
+  {device:"Iqoo Z6", version:"14"},
+  {device:"Realme 10 pro plus", version:"15"},
+  {device:"Moto g32", version:"13"},
+  {device:"Realme GT 2", version:"15"}
+];
+
+const PRIORITIES = ["High","Medium","Low"];
+const BUGTYPES = ["Functional/Logical","UI","Content"];
+
+function el(tag, attrs, ...children){
+  const e = document.createElement(tag);
+  for(const k in attrs){
+    if(k==="html") e.innerHTML = attrs[k];
+    else e.setAttribute(k, attrs[k]);
+  }
+  children.forEach(c=> e.appendChild(typeof c==="string"?document.createTextNode(c):c));
+  return e;
+}
+
+function renderBugRows(){
+  const wrap = document.getElementById("bugRows");
+  wrap.innerHTML = "";
+  const table = el("table",{class:"bugtable"});
+  table.appendChild(el("tr",{},
+    el("th",{},"ID"), el("th",{},"Subject"), el("th",{},"Category"),
+    el("th",{},"Type"), el("th",{},"Priority"), el("th",{},"Bug Type"),
+    el("th",{},"Assignee"), el("th",{},"")
+  ));
+  bugs.forEach((b, i)=>{
+    const tr = el("tr",{});
+    tr.appendChild(el("td",{}, inputCell(b,i,"id",30)));
+    tr.appendChild(el("td",{}, inputCell(b,i,"subject",160)));
+    tr.appendChild(el("td",{}, inputCell(b,i,"category",90)));
+    tr.appendChild(el("td",{}, inputCell(b,i,"type",70)));
+    tr.appendChild(el("td",{}, selectCell(b,i,"priority",PRIORITIES)));
+    tr.appendChild(el("td",{}, selectCell(b,i,"bugType",BUGTYPES)));
+    tr.appendChild(el("td",{}, inputCell(b,i,"assignee",90)));
+    const delBtn = el("button",{class:"small secondary"},"✕");
+    delBtn.onclick = ()=>{ bugs.splice(i,1); renderBugRows(); };
+    tr.appendChild(el("td",{}, delBtn));
+    table.appendChild(tr);
+  });
+  wrap.appendChild(table);
+}
+
+function inputCell(obj,i,field,width){
+  const inp = document.createElement("input");
+  inp.type="text"; inp.value = obj[field]||""; inp.style.width = width+"px";
+  inp.oninput = ()=>{ bugs[i][field]=inp.value; };
+  return inp;
+}
+function selectCell(obj,i,field,options){
+  const sel = document.createElement("select");
+  options.forEach(o=>{
+    const op = document.createElement("option");
+    op.value=o; op.textContent=o; if(obj[field]===o) op.selected=true;
+    sel.appendChild(op);
+  });
+  sel.onchange = ()=>{ bugs[i][field]=sel.value; };
+  return sel;
+}
+
+function addBugRow(){
+  bugs.push({id:"", subject:"", category:"", type:"Product Bug", priority:"Medium", bugType:"Functional/Logical", assignee:""});
+  renderBugRows();
+}
+
+function renderDeviceRows(){
+  const wrap = document.getElementById("deviceRows");
+  wrap.innerHTML="";
+  const table = el("table",{class:"bugtable"});
+  table.appendChild(el("tr",{}, el("th",{},"Device"), el("th",{},"Version"), el("th",{},"")));
+  devices.forEach((d,i)=>{
+    const tr = el("tr",{});
+    tr.appendChild(el("td",{}, inputCell(d,i,"device",120)));
+    tr.appendChild(el("td",{}, inputCell(d,i,"version",50)));
+    const delBtn = el("button",{class:"small secondary"},"✕");
+    delBtn.onclick = ()=>{ devices.splice(i,1); renderDeviceRows(); };
+    tr.appendChild(el("td",{}, delBtn));
+    table.appendChild(tr);
+  });
+  wrap.appendChild(table);
+}
+// override inputCell usage for devices (separate array reference issue): patch functions below
+function addDeviceRow(){
+  devices.push({device:"", version:""});
+  renderDeviceRows();
+}
+
+// ---- CSV parsing ----
+// ---- Bug/Story relation count (optional, pasted straight from Google Sheets) ----
+// Sheets copies as tab-separated values, so a simple split on tabs/newlines is enough
+// for the common case; quoted fields (rare when pasting from Sheets) are also handled.
+let bugStoryTable = null; // {headers:[...], rows:[[...], ...]}
+
+function parseTsv(text){
+  const rows = [];
+  let row = [], field = "", inQuotes = false;
+  for(let i=0; i<text.length; i++){
+    const c = text[i], next = text[i+1];
+    if(inQuotes){
+      if(c === '"' && next === '"'){ field += '"'; i++; }
+      else if(c === '"'){ inQuotes = false; }
+      else field += c;
+    } else {
+      if(c === '"') inQuotes = true;
+      else if(c === '\t'){ row.push(field); field = ""; }
+      else if(c === '\n'){ row.push(field); rows.push(row); row = []; field = ""; }
+      else if(c === '\r'){ /* skip */ }
+      else field += c;
+    }
+  }
+  if(field.length || row.length){ row.push(field); rows.push(row); }
+  return rows.filter(r => r.some(cell => cell.trim() !== ""));
+}
+
+function parseBugStory(){
+  const txt = document.getElementById("bugStoryPaste").value;
+  const statusEl = document.getElementById("bugStoryStatus");
+  if(!txt.trim()){ statusEl.textContent = "Paste a range copied from Google Sheets first."; return; }
+  const rows = parseTsv(txt);
+  if(rows.length < 1){ statusEl.textContent = "Could not find any rows in the pasted data."; return; }
+  bugStoryTable = { headers: rows[0], rows: rows.slice(1) };
+  document.getElementById("includeBugStory").checked = true;
+  statusEl.textContent = `Parsed ${bugStoryTable.rows.length} row(s), ${bugStoryTable.headers.length} column(s). Click Generate Report to add it.`;
+}
+
+function parseCsv(text){
+  // Handles quoted fields containing commas/newlines.
+  const rows = [];
+  let row = [], field = "", inQuotes = false;
+  for(let i=0; i<text.length; i++){
+    const c = text[i], next = text[i+1];
+    if(inQuotes){
+      if(c === '"' && next === '"'){ field += '"'; i++; }
+      else if(c === '"'){ inQuotes = false; }
+      else field += c;
+    } else {
+      if(c === '"') inQuotes = true;
+      else if(c === ','){ row.push(field); field = ""; }
+      else if(c === '\n'){ row.push(field); rows.push(row); row = []; field = ""; }
+      else if(c === '\r'){ /* skip */ }
+      else field += c;
+    }
+  }
+  if(field.length || row.length){ row.push(field); rows.push(row); }
+  return rows.filter(r => r.length > 1 || (r.length===1 && r[0].trim() !== ""));
+}
+
+const FIELD_ALIASES = {
+  id: ["id","ticket","ticket id","bug id"],
+  subject: ["subject","title","summary","description"],
+  category: ["category","module","component"],
+  type: ["type","bug/suggestion","issue type"],
+  priority: ["priority"],
+  bugType: ["bug type","bugtype","bug_type"],
+  assignee: ["assignee","owner","developer","assigned to"]
+};
+
+// CSVs rarely spell bug-type exactly as "Functional/Logical" / "UI" / "Content" —
+// this maps common variants (UI/UX, Functional, Logic, Content/Transactional, etc.)
+// onto the three matrix categories instead of silently defaulting everything to
+// "Functional/Logical" on an exact-match miss.
+function normalizeBugType(raw){
+  const t = (raw||"").toLowerCase().trim();
+  if(!t) return "Functional/Logical";
+  if(t.includes("ui") || t.includes("ux")) return "UI";
+  if(t.includes("content")) return "Content";
+  if(t.includes("function") || t.includes("logic")) return "Functional/Logical";
+  return "Functional/Logical";
+}
+
+function mapCsvRows(rows){
+  if(rows.length < 2) throw new Error("CSV needs a header row plus at least one data row.");
+  const header = rows[0].map(h => h.trim().toLowerCase());
+  const colIndex = {};
+  Object.keys(FIELD_ALIASES).forEach(field=>{
+    for(const alias of FIELD_ALIASES[field]){
+      const idx = header.indexOf(alias);
+      if(idx !== -1){ colIndex[field] = idx; break; }
+    }
+  });
+  return rows.slice(1).map(r=>({
+    id: colIndex.id!==undefined ? (r[colIndex.id]||"").trim() : "",
+    subject: colIndex.subject!==undefined ? (r[colIndex.subject]||"").trim() : "",
+    category: colIndex.category!==undefined ? (r[colIndex.category]||"").trim() : "",
+    type: colIndex.type!==undefined ? (r[colIndex.type]||"").trim() : "Product Bug",
+    priority: PRIORITY_MAP[(r[colIndex.priority]||"").trim()] || (r[colIndex.priority]||"Medium").trim() || "Medium",
+    bugType: normalizeBugType(colIndex.bugType!==undefined ? r[colIndex.bugType] : ""),
+    assignee: colIndex.assignee!==undefined ? (r[colIndex.assignee]||"").trim() : ""
+  })).filter(b => b.id || b.subject);
+}
+
+document.getElementById("csvFile").addEventListener("change", (e)=>{
+  const file = e.target.files[0];
+  const statusEl = document.getElementById("csvStatus");
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    try{
+      const rows = parseCsv(reader.result);
+      bugs = mapCsvRows(rows);
+      renderBugRows();
+      statusEl.textContent = `Imported ${bugs.length} defects from "${file.name}". Review the table below, then click Generate Report.`;
+    }catch(err){
+      statusEl.textContent = "Could not read CSV: " + err.message;
+    }
+  };
+  reader.readAsText(file);
+});
+
+const PRIORITY_MAP = { "High":"High", "Normal":"Medium", "Medium":"Medium", "Low":"Low" };
+const BUGTYPE_GUESS = ["Functional/Logical","UI","Content","UI/UX"];
+
+function importPastedData(){
+  const txt = document.getElementById("jsonPaste").value.trim();
+  const hint = document.getElementById("importHint");
+  if(!txt) return;
+  try{
+    let imported;
+    if(txt.startsWith("[") || txt.startsWith("{")){
+      const data = JSON.parse(txt);
+      if(!Array.isArray(data)) throw new Error("Expected a JSON array of bug objects.");
+      imported = data.map(d=>({
+        id:d.id||"", subject:d.subject||"", category:d.category||"",
+        type:d.type||"Product Bug", priority:PRIORITY_MAP[d.priority]||d.priority||"Medium",
+        bugType:normalizeBugType(d.bugType), assignee:d.assignee||""
+      }));
+      hint.textContent = `Imported ${imported.length} defects from pasted JSON.`;
+    } else {
+      const rows = parseCsv(txt);
+      imported = mapCsvRows(rows);
+      hint.textContent = `Imported ${imported.length} defects from pasted CSV text.`;
+    }
+    bugs = imported;
+    renderBugRows();
+  }catch(e){
+    alert("Could not parse pasted data: "+e.message);
+  }
+}
+
+function fileToDataUrl(input, previewImg, cb){
+  input.addEventListener("change", ()=>{
+    const file = input.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      previewImg.src = reader.result;
+      previewImg.style.display="block";
+      cb(reader.result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+let firebaseImgData = null;
+let firebaseImgData2 = null;
+let testlinkImgData = null;
+fileToDataUrl(document.getElementById("firebaseImg"), document.getElementById("firebaseImgPreview"), (d)=>firebaseImgData=d);
+fileToDataUrl(document.getElementById("firebaseImg2"), document.getElementById("firebaseImg2Preview"), (d)=>firebaseImgData2=d);
+fileToDataUrl(document.getElementById("testlinkImg"), document.getElementById("testlinkImgPreview"), (d)=>testlinkImgData=d);
+
+document.querySelectorAll('input[name=status]').forEach(r=>{
+  r.addEventListener("change", ()=>{
+    document.getElementById("testlinkPanel").style.display =
+      document.querySelector('input[name=status]:checked').value==="completed" ? "block":"none";
+  });
+});
+
+function computeMatrix(){
+  const matrix = {};
+  PRIORITIES.forEach(p=>{
+    matrix[p] = {};
+    BUGTYPES.forEach(bt=> matrix[p][bt] = 0);
+    matrix[p].suggestions = 0;
+  });
+  let total = 0;
+  bugs.forEach(b=>{
+    if(!PRIORITIES.includes(b.priority)) return;
+    if(/suggestion/i.test(b.type)){
+      matrix[b.priority].suggestions += 1;
+      total += 1; // suggestions count toward the overall total
+    } else {
+      const bt = normalizeBugType(b.bugType);
+      matrix[b.priority][bt] += 1;
+      total += 1;
+    }
+  });
+  return {matrix, total};
+}
+
+function escapeHtml(s){
+  return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+// Inline-style helpers: Gmail's compose box only sees the copied markup itself,
+// not our <style> block, so every color in the final report is applied inline.
+const TH_STYLE = "background:#2f5faa;color:#fff;text-align:center;font-weight:700;padding:7px 9px;border:1px solid #1b3a6b;font-size:12.5px;";
+const TD_STYLE = "padding:6px 9px;border:1px solid #d7d9e2;font-size:12.5px;";
+const TD_CENTER = `${TD_STYLE}text-align:center;`;
+function h3(text){
+  return `<h3 style="font-size:14px;margin:22px 0 10px;color:#1b3a6b;letter-spacing:.05em;text-transform:uppercase;font-weight:800;background:linear-gradient(90deg,#e7eefb,#ffffff);border-left:5px solid #2f5faa;padding:7px 12px;border-radius:0 6px 6px 0;">${text}</h3>`;
+}
+function h3Inline(text){
+  return `<span style="font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#1b3a6b;background:linear-gradient(90deg,#e7eefb,#ffffff);border-left:5px solid #2f5faa;padding:7px 12px;border-radius:0 6px 6px 0;display:inline-block;">${text}</span>`;
+}
+function linkButton(href){
+  return `<a href="${href}" style="display:inline-block;background:linear-gradient(135deg,#3568b3,#1b3a6b);color:#fff;font-weight:700;font-size:12.5px;padding:2px 10px;border-radius:10px;text-decoration:none;letter-spacing:.01em;vertical-align:middle;box-shadow:0 1px 2px rgba(27,58,107,.3);">Click here ↗</a>`;
+}
+const PRIORITY_COLORS = {
+  High:   { fg:"#dc2626", bg:"#fde2e2" },
+  Medium: { fg:"#d97706", bg:"#fef0d5" },
+  Low:    { fg:"#65a30d", bg:"#eef6d6" }
+};
+
+function renderReport(){
+  const buildVersion = document.getElementById("buildVersion").value || "—";
+  const shortLabel = document.getElementById("shortLabel").value || "";
+  const status = document.querySelector('input[name=status]:checked').value;
+  const noteText = document.getElementById("noteText").value.trim();
+  const noteTicket = document.getElementById("noteTicket").value.trim();
+  const noteTicketUrl = document.getElementById("noteTicketUrl").value.trim();
+  const openProjectLink = document.getElementById("openProjectLink").value.trim();
+  const firebaseLink = document.getElementById("firebaseLink").value.trim();
+  const signerName = document.getElementById("signerName").value.trim();
+  const signerRole = document.getElementById("signerRole").value.trim();
+
+  const {matrix, total} = computeMatrix();
+
+  const statusLine = status === "completed"
+    ? `Testing of Android build ${escapeHtml(buildVersion)} along with group testing has been completed.`
+    : `Testing of Android build ${escapeHtml(buildVersion)} is in progress.`;
+
+  let noteHtml = "";
+  if(noteText){
+    noteHtml = `<p><b>NOTE:</b> ${noteTicketUrl?`<a href="${noteTicketUrl}">${escapeHtml(noteTicket)}</a>`:escapeHtml(noteTicket)} ${escapeHtml(noteText)}</p>`;
+  }
+
+  // Defect matrix styling — modeled on the reference screenshot: green header,
+  // light-green Priority/Suggestions columns, white Bug-type/Bugs cells, with
+  // only the top (Functional/Logical) row of each priority block color-highlighted.
+  // Padding and column widths are kept tight so the table reads compact rather
+  // than stretching across the full email width.
+  const MATRIX_TH = "background:#a9d18e;color:#000;text-align:center;font-weight:bold;padding:4px 8px;border:2px solid #000;font-size:12px;";
+  const MATRIX_TD = "padding:3px 8px;border:2px solid #000;font-size:12px;text-align:center;";
+  const MATRIX_PRIORITY_CELL = `${MATRIX_TD}background:#d9ead3;font-weight:bold;color:#000;width:70px;`;
+  const MATRIX_SUGGESTION_CELL = `${MATRIX_TD}background:#d9ead3;font-weight:bold;color:#674ea7;width:80px;`;
+  const MATRIX_BUGTYPE_CELL = `${MATRIX_TD}background:#ffffff;color:#000;width:150px;`;
+  const MATRIX_BUGCOUNT_PLAIN = `${MATRIX_TD}background:#ffffff;color:#000;font-weight:bold;width:60px;`;
+  const MATRIX_TOTAL_CELL = `${MATRIX_TD}background:#a9d18e;font-weight:bold;color:#000;`;
+  const MATRIX_HIGHLIGHT_COLOR = { High:"#e06666", Medium:"#f6b26b", Low:"#ffd966" };
+
+  // Priority cell in the Defects Summary Report: only High gets a highlight; Medium/Low stay plain.
+  function priorityCellStyle(priority){
+    if(priority === "High"){
+      return `${TD_STYLE}background:#dc2626;color:#fff;font-weight:700;text-align:center;`;
+    }
+    return `${TD_STYLE}text-align:center;`;
+  }
+
+  const contentLabel = {High:"Content", Medium:"Content/ Transactional", Low:"Content"};
+
+  let matrixRows = "";
+  PRIORITIES.forEach(p=>{
+    const rows = [
+      ["Functional/Logical", matrix[p]["Functional/Logical"]],
+      ["UI", matrix[p]["UI"]],
+      [contentLabel[p], matrix[p]["Content"]]
+    ];
+    rows.forEach(([label, val], idx)=>{
+      matrixRows += "<tr>";
+      if(idx===0){
+        matrixRows += `<td rowspan="3" style="${MATRIX_PRIORITY_CELL}">${p}</td>`;
+      }
+      const bugCellStyle = idx===0
+        ? `${MATRIX_TD}background:${MATRIX_HIGHLIGHT_COLOR[p]};color:#000;font-weight:bold;width:60px;`
+        : MATRIX_BUGCOUNT_PLAIN;
+      matrixRows += `<td style="${MATRIX_BUGTYPE_CELL}">${label}</td><td style="${bugCellStyle}">${val}</td>`;
+      if(idx===0){
+        matrixRows += `<td rowspan="3" style="${MATRIX_SUGGESTION_CELL}">${matrix[p].suggestions}</td>`;
+      }
+      matrixRows += "</tr>";
+    });
+  });
+
+  const matrixHtml = `
+    <table style="border-collapse:collapse;width:auto;margin:10px 0 20px;">
+      <tr><th style="${MATRIX_TH}">Priority</th><th style="${MATRIX_TH}">Bug type</th><th style="${MATRIX_TH}">Bugs</th><th style="${MATRIX_TH}">Suggestions</th></tr>
+      ${matrixRows}
+      <tr><td colspan="2" style="${MATRIX_TOTAL_CELL}">Total</td><td colspan="2" style="${MATRIX_TOTAL_CELL}">${total}</td></tr>
+    </table>`;
+
+  let bugRowsHtml = "";
+  bugs.forEach(b=>{
+    bugRowsHtml += `<tr>
+      <td style="${TD_CENTER}">${escapeHtml(b.id)}</td>
+      <td style="${TD_STYLE}">${escapeHtml(b.subject)}</td>
+      <td style="${TD_CENTER}">${escapeHtml(b.category)}</td>
+      <td style="${TD_CENTER}">${escapeHtml(b.type)}</td>
+      <td style="${priorityCellStyle(b.priority)}">${escapeHtml(b.priority)}</td>
+      <td style="${TD_CENTER}">${escapeHtml(b.assignee)}</td>
+    </tr>`;
+  });
+
+  const labelSuffix = shortLabel ? ` of ${escapeHtml(shortLabel)}` : "";
+
+  const summaryTitle = status === "completed"
+    ? `Defects Summary Report${labelSuffix}:`
+    : `Defects Summary Report:`;
+
+  const summaryHtml = `
+    ${h3(summaryTitle)}
+    <table style="border-collapse:collapse;width:100%;margin:10px 0 20px;">
+      <tr><th style="${TH_STYLE}">ID</th><th style="${TH_STYLE}">Subject</th><th style="${TH_STYLE}">Category</th><th style="${TH_STYLE}">Type</th><th style="${TH_STYLE}">Priority</th><th style="${TH_STYLE}">Assignee</th></tr>
+      ${bugRowsHtml || `<tr><td colspan="6" style="${TD_STYLE}text-align:center;color:#888;">No defects added yet — upload a CSV on the left</td></tr>`}
+    </table>`;
+
+  let deviceRowsHtml = "";
+  const DEVICE_TH = "background:#2f5faa;color:#fff;text-align:center;font-weight:700;padding:4px 8px;border:1px solid #1b3a6b;font-size:11.5px;";
+  const DEVICE_TD = "padding:3px 8px;border:1px solid #d7d9e2;font-size:11.5px;text-align:center;";
+  devices.forEach((d,i)=>{
+    deviceRowsHtml += `<tr><td style="${DEVICE_TD}">${i+1}</td><td style="${DEVICE_TD}">${escapeHtml(d.device)}</td><td style="${DEVICE_TD}">${escapeHtml(d.version)}</td></tr>`;
+  });
+
+  const devicesHtml = `
+    ${h3("Testing Devices:")}
+    <table style="border-collapse:collapse;width:auto;max-width:260px;margin:10px 0 20px;">
+      <tr><th style="${DEVICE_TH}">S No</th><th style="${DEVICE_TH}">Device</th><th style="${DEVICE_TH}">Version</th></tr>
+      ${deviceRowsHtml || `<tr><td colspan="3" style="${DEVICE_TD}color:#888;">No devices added</td></tr>`}
+    </table>`;
+
+  const firebaseHtml = `
+    <p>${h3Inline(`Firebase link${labelSuffix}`)}: ${firebaseLink? linkButton(firebaseLink) : "<i>(no link provided)</i>"}</p>
+    ${firebaseImgData ? `<img src="${firebaseImgData}" style="max-width:480px;display:block;margin:8px 0;border-radius:8px;border:1px solid #ddd;">` : ""}
+    ${firebaseImgData2 ? `<img src="${firebaseImgData2}" style="max-width:480px;display:block;margin:8px 0;border-radius:8px;border:1px solid #ddd;">` : ""}`;
+
+  const includeBugStory = document.getElementById("includeBugStory").checked;
+  let bugStoryHtml = "";
+  if(includeBugStory && bugStoryTable && bugStoryTable.rows.length){
+    const headerCells = bugStoryTable.headers.map(h=>`<th style="${TH_STYLE}">${escapeHtml(h)}</th>`).join("");
+    const bodyRows = bugStoryTable.rows.map(r=>
+      `<tr>${r.map(c=>`<td style="${TD_CENTER}">${escapeHtml(c)}</td>`).join("")}</tr>`
+    ).join("");
+    bugStoryHtml = `
+      ${h3("Bug/Story relation Count:")}
+      <table style="border-collapse:collapse;width:100%;margin:10px 0 20px;">
+        <tr>${headerCells}</tr>
+        ${bodyRows}
+      </table>`;
+  }
+
+  const testlinkHtml = status === "completed" ? `
+    ${h3(`Testlink report${labelSuffix}:`)}
+    ${testlinkImgData ? `<img src="${testlinkImgData}" style="max-width:480px;display:block;margin:8px 0;border-radius:8px;border:1px solid #ddd;">` : `<p><i>(no test execution screenshot uploaded yet)</i></p>`}
+  ` : "";
+
+  const signOffHtml = `
+    <p>Please let me know if anything else is required.<br>Thanks and Regards,</p>
+    <p>${escapeHtml(signerName)}${signerRole?`<br>${escapeHtml(signerRole)}`:""}</p>`;
+
+  const headerTag = status === "completed"
+    ? `<span style="display:inline-block;margin-top:6px;font-size:11px;padding:3px 9px;border-radius:20px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;background:#16a34a;color:#fff;">Completed</span>`
+    : `<span style="display:inline-block;margin-top:6px;font-size:11px;padding:3px 9px;border-radius:20px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;background:#eab308;color:#3a2f00;">In progress</span>`;
+
+  document.getElementById("reportOutput").innerHTML = `
+    <div style="background:linear-gradient(135deg,#3568b3,#1b3a6b);color:#fff;padding:20px 24px;border-radius:14px 14px 0 0;">
+      <h2 style="margin:0;font-size:19px;color:#fff;letter-spacing:.01em;font-weight:800;">Android Build ${escapeHtml(buildVersion)} — QA Testing Report</h2>
+      ${headerTag}
+    </div>
+    <div style="padding:22px 24px;">
+      <p>Hi All,</p>
+      <p>${statusLine}</p>
+      <p>Please find the status below:-</p>
+      ${noteHtml}
+      ${h3("Defect matrix:")}
+      ${matrixHtml}
+      <p><b>Open Project link:</b> ${openProjectLink? linkButton(openProjectLink) : "<i>(no link provided)</i>"}</p>
+      ${summaryHtml}
+      ${firebaseHtml}
+      ${bugStoryHtml}
+      ${testlinkHtml}
+      ${devicesHtml}
+      ${signOffHtml}
+    </div>
+  `;
+}
+
+function copyReport(){
+  const node = document.getElementById("reportOutput");
+  const html = node.innerHTML;
+  const plain = node.innerText;
+  try{
+    const blobHtml = new Blob([html], {type:"text/html"});
+    const blobText = new Blob([plain], {type:"text/plain"});
+    const item = new ClipboardItem({ "text/html": blobHtml, "text/plain": blobText });
+    navigator.clipboard.write([item]).then(()=>{
+      document.getElementById("status").textContent = "Copied! Paste into Gmail with Ctrl/Cmd+V.";
+    }).catch(()=>{ fallbackCopy(node); });
+  }catch(e){
+    fallbackCopy(node);
+  }
+}
+function fallbackCopy(node){
+  const range = document.createRange();
+  range.selectNode(node);
+  const sel = window.getSelection();
+  sel.removeAllRanges(); sel.addRange(range);
+  document.execCommand("copy");
+  sel.removeAllRanges();
+  document.getElementById("status").textContent = "Copied (fallback mode). Paste into Gmail.";
+}
+
+// init
+renderBugRows();
+renderDeviceRows();
+</script>
+</body>
+</html>
